@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:6.2-alpine
+    container_name: redis
+    command: redis-server --appendonly yes --save 300 1 --dir /data
+    restart: always
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  rabbitmq:
+    hostname: 'rabbitmq'
+    container_name: rabbitmq
+    image: rabbitmq:3.9.13-management
+    restart: always
+    ports:
+        - "127.0.0.1:5672:5672"
+        - "127.0.0.1:15672:15672"
+    volumes:
+        - rabbitmq-data:/var/lib/rabbitmq/mnesia/
+  
+  bot-execution-base:
+    build:
+      context: ./bot-execution
+    environment:
+      - RUN_ENV=PROD
+      - PORT=8088
+      - RABBITMQ_HOST=rabbitmq
+      - REDIS_HOST=redis
+      - SENTRY_DSN=${SENTRY_DSN_EXEC}
+
+  bot-execution-http:
+    extends:
+      service: bot-execution-base
+    command: ['update_http']
+
+  bot-execution-consumer:
+    extends:
+      service: bot-execution-base
+    command: ['consumer']
+
+  bot-management:
+    build:
+      context: ./bot-management
+    command: ["npm", "start"]
+    restart: always
+    environment:
+      - REDIS_HOST=redis
+      - NODE_ENV=production
+      - WEBHOOK_HOST=https://${RUNTIME_HOST}
+      - SENTRY_DSN=${SENTRY_DSN_MANAGE}
+      - CONN_STR=${MONGO_CONN_STR}
+
+  history:
+    build:
+      context: ./history
+    command: ["npm", "start"]
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_HOST=rabbitmq
+      - SENTRY_DSN=${SENTRY_DSN_HISTORY}
+      - CONN_STR=${MONGO_CONN_STR}
+
+  caddy:
+    image: caddy:2.6.2
+    container_name: caddy
+    restart: always
+    volumes:
+      - caddy-stuff:/data
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - ACME_AGREE=true
+      - HOST=${RUNTIME_HOST}
+
+volumes:
+  redis-data:
+  rabbitmq-data:
+  caddy-stuff:

@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:6.2-alpine
+    command: redis-server --appendonly yes --save 300 1
+    volumes:
+      - redis-data:/data
+    ports:
+      - 6379:6379
+
+  rabbitmq:
+    hostname: 'rabbitmq'
+    image: rabbitmq:3.9.13-management
+    ports:
+        - 5672:5672
+        - 15672:15672
+    volumes:
+        - rabbitmq-data:/var/lib/rabbitmq/mnesia/
+
+  bot-execution:
+    build:
+      context: ./bot-execution
+    environment:
+      - RUN_ENV=DEV
+      - PORT=8088
+      - RABBITMQ_HOST=rabbitmq
+      - REDIS_HOST=redis
+    ports:
+      - 8000:8088
+    command: ['update_http']
+
+  bot-management:
+    build:
+      context: ./bot-management
+    command: ["npm", "start"]
+    restart: always
+    environment:
+      - REDIS_HOST=redis
+      - NODE_ENV=production
+      - WEBHOOK_HOST=https://9fc4-217-144-175-7.ngrok-free.app
+      - CONN_STR=mongodb+srv://admin:DaMnzx46@cluster0.et51r.mongodb.net/
+
+  history:
+    build:
+      context: ./history
+    command: ["npm", "start"]
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_HOST=rabbitmq
+      - CONN_STR=mongodb+srv://admin:DaMnzx46@cluster0.et51r.mongodb.net/
+
+  caddy:
+    image: caddy:2.6.2
+    container_name: caddy
+    restart: always
+    volumes:
+      - caddy-data:/data
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - HOST=localhost:8000
+
+volumes:
+  redis-data:
+  rabbitmq-data:
+  caddy-data:
